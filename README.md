@@ -22,8 +22,8 @@ exloli-next --help
 ```bash
 # 注：docker-compose 自行安装 
 mkdir exloli-next && cd exloli-next
-wget https://raw.githubusercontent.com/lolishinshi/exloli/master/docker-compose.yml
-wget https://github.com/EhTagTranslation/Database/releases/download/v6.7880.1/db.text.json
+wget https://raw.githubusercontent.com/lolishinshi/exloli-next/master/docker-compose.yml
+wget https://github.com/EhTagTranslation/Database/releases/download/v6.8035.1/db.text.json
 touch db.sqlite db.sqlite-shm db.sqlite-wal
 mv config.toml.example config.toml
 docker-compose up -d
