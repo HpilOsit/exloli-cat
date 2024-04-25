@@ -82,6 +82,18 @@ impl PollEntity {
             .await?;
         Ok(score)
     }
+
+    /// 获取指定投票的分数排名区段，结果为一个 0~1 的小数
+    #[tracing::instrument(level = Level::DEBUG)]
+    pub async fn rank(&self) -> Result<f32> {
+        let (higher, total): (i32, i32) = sqlx::query_as(
+            "SELECT COUNT(*), (SELECT COUNT(*) FROM poll) FROM poll WHERE score > ?",
+        )
+        .bind(self.score)
+        .fetch_one(&*DB)
+        .await?;
+        Ok(higher as f32 / total as f32)
+    }
 }
 
 impl VoteEntity {

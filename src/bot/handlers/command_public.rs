@@ -14,10 +14,10 @@ use crate::bot::handlers::{
     cmd_best_keyboard, cmd_best_text, cmd_challenge_keyboard, gallery_preview_url,
 };
 use crate::bot::scheduler::Scheduler;
-use crate::bot::utils::ChallengeLocker;
+use crate::bot::utils::{ChallengeLocker, ChallengeProvider};
 use crate::bot::Bot;
 use crate::config::Config;
-use crate::database::{ChallengeView, GalleryEntity, MessageEntity, PollEntity};
+use crate::database::{GalleryEntity, MessageEntity, PollEntity};
 use crate::ehentai::{EhGalleryUrl, GalleryInfo};
 use crate::tags::EhTagTransDB;
 use crate::uploader::ExloliUploader;
@@ -66,17 +66,17 @@ async fn cmd_challenge(
     trans: EhTagTransDB,
     locker: ChallengeLocker,
     scheduler: Scheduler,
+    challange_provider: ChallengeProvider,
 ) -> Result<()> {
     info!("{}: /challenge", msg.from().unwrap().id);
-    let challenge = ChallengeView::get_random().await?;
-    let answer = challenge.choose(&mut thread_rng()).unwrap();
+    let mut challenge = challange_provider.get_challenge().await.unwrap();
+    let answer = challenge[0].clone();
+    challenge.shuffle(&mut thread_rng());
+    let url = format!("https://telegra.ph{}", answer.url);
     let id = locker.add_challenge(answer.id, answer.page, answer.artist.clone());
     let keyboard = cmd_challenge_keyboard(id, &challenge, &trans);
     let reply = bot
-        .send_photo(
-            msg.chat.id,
-            InputFile::url(format!("https://telegra.ph{}", answer.url).parse()?),
-        )
+        .send_photo(msg.chat.id, InputFile::url(url.parse()?))
         .caption("上述图片来自下列哪位作者的本子？")
         .reply_markup(keyboard)
         .reply_to_message_id(msg.id)
@@ -155,7 +155,11 @@ async fn cmd_query(bot: Bot, msg: Message, cfg: Config, gallery: EhGalleryUrl) -
             reply_to!(
                 bot,
                 msg,
-                format!("消息：{preview}\n地址：{url}\n评分：{:.2}", poll.score * 100.)
+                format!(
+                    "消息：{preview}\n地址：{url}\n评分：{:.2}（{:.2}）",
+                    poll.score * 100.,
+                    poll.rank().await? * 100.
+                )
             )
             .await?;
         }

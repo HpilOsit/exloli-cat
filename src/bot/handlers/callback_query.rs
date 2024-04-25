@@ -41,15 +41,19 @@ async fn callback_challenge(
         ChallengeHistory::create(query.from.id.0 as i64, gallery, page, success, message.chat.id.0)
             .await?;
 
+        let (stat_success, stat_total) =
+            ChallengeHistory::answer_stats(query.from.id.0 as i64, message.chat.id.0).await?;
+
         let mention = user_mention(query.from.id.0 as i64, &query.from.full_name());
         let result = if success { "答对了！" } else { "答错了……" };
         let artist = trans.trans_raw("artist", &answer);
         let url = gallery_entity.url().url();
         let preview = link(&preview, &gallery_entity.title_jp.unwrap_or(gallery_entity.title));
         let score = poll.score * 100.;
+        let rank = poll.rank().await? * 100.;
 
         let text = format!(
-            "{mention} {result}，答案是 {artist}（{answer}）\n地址：{url}\n预览：{preview}\n评分：{score:.2}",
+            "{mention} {result}，答案是 {artist}（{answer}）\n回答情况：{stat_success}/{stat_total}\n地址：{url}\n预览：{preview}\n评分：{score:.2}（{rank:.2}%）",
         );
 
         bot.edit_message_caption(message.chat.id, message.id).caption(text).await?;

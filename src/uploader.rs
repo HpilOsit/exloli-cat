@@ -1,7 +1,7 @@
 use std::backtrace::Backtrace;
 use std::time::Duration;
 
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, bail, Result};
 use chrono::{Datelike, Utc};
 use futures::StreamExt;
 use regex::Regex;
@@ -10,6 +10,7 @@ use telegraph_rs::{html_to_node, Telegraph};
 use teloxide::prelude::*;
 use teloxide::types::MessageId;
 use teloxide::utils::html::{code_inline, link};
+use tokio::task::JoinHandle;
 use tokio::time;
 use tracing::{debug, error, info, Instrument};
 
@@ -227,6 +228,10 @@ impl ExloliUploader {
             async move {
                 // TODO: 此处可以考虑一次上传多个图片，减少请求次数，避免触发 telegraph 的 rate limit
                 while let Some((page, (fileindex, url))) = rx.recv().await {
+                    // 跳过 gif，太大了，基本传不上去
+                    if url.ends_with(".gif") {
+                        continue;
+                    }
                     let bytes = client.get(url).send().await?.bytes().await?.to_vec();
                     debug!("已下载: {}", page.page());
                     let resp = Telegraph::upload_with(&[ImageBytes(bytes)], &client).await?;
@@ -239,9 +244,7 @@ impl ExloliUploader {
             .in_current_span(),
         );
 
-        let (first, second) = tokio::try_join!(getter, uploader)?;
-        first?;
-        second?;
+        tokio::try_join!(flatten(getter), flatten(uploader))?;
 
         Ok(())
     }
@@ -255,6 +258,9 @@ impl ExloliUploader {
         let images = ImageEntity::get_by_gallery_id(gallery.url().id()).await?;
 
         let mut html = String::new();
+        if gallery.cover() != 0 && gallery.cover() < images.len() {
+            html.push_str(&format!(r#"<img src="{}">"#, images[gallery.cover()].url))
+        }
         for img in images {
             html.push_str(&format!(r#"<img src="{}">"#, img.url));
         }
@@ -292,6 +298,14 @@ impl ExloliUploader {
         text.push_str(&format!("{}: {}", code_inline("原始地址"), gallery.url().url()));
 
         Ok(text)
+    }
+}
+
+async fn flatten<T>(handle: JoinHandle<Result<T>>) -> Result<T> {
+    match handle.await {
+        Ok(Ok(result)) => Ok(result),
+        Ok(Err(err)) => Err(err),
+        Err(err) => bail!(err),
     }
 }
 

@@ -2,9 +2,16 @@ use std::collections::VecDeque;
 use std::sync::Arc;
 use std::time::Instant;
 
+use anyhow::Result;
 use dashmap::DashMap;
+use image::EncodableLayout;
 use serde::{Deserialize, Serialize};
 use teloxide::prelude::*;
+use tokio::sync::mpsc::{channel, Receiver};
+use tokio::sync::Mutex;
+use tracing::{info, warn};
+
+use crate::database::ChallengeView;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum CallbackData {
@@ -111,4 +118,53 @@ impl ChallengeLocker {
     pub fn get_challenge(&self, id: i64) -> Option<(i32, i32, String)> {
         Some(self.0.remove(&id)?.1)
     }
+}
+
+/// 时刻缓存一些有效的挑战，提高响应速度
+#[derive(Debug, Clone)]
+pub struct ChallengeProvider(Arc<Mutex<Receiver<Vec<ChallengeView>>>>);
+
+impl ChallengeProvider {
+    pub fn new() -> Self {
+        let (tx, rx) = channel(10);
+        tokio::spawn(async move {
+            loop {
+                match Self::_get_challenge().await {
+                    Ok(challenge) => {
+                        tx.send(challenge).await.unwrap();
+                    }
+                    Err(e) => {
+                        warn!("获取挑战失败: {}", e);
+                    }
+                }
+            }
+        });
+        Self(Arc::new(Mutex::new(rx)))
+    }
+
+    async fn _get_challenge() -> Result<Vec<ChallengeView>> {
+        loop {
+            let challenge = ChallengeView::get_random().await?;
+            let answer = &challenge[0];
+            let url = format!("https://telegra.ph{}", answer.url);
+            let resp = reqwest::get(&url).await?;
+            let data = resp.bytes().await?;
+            if has_qrcode(&data)? {
+                info!("跳过包含二维码的图片");
+                continue;
+            }
+            return Ok(challenge);
+        }
+    }
+
+    pub async fn get_challenge(&self) -> Option<Vec<ChallengeView>> {
+        self.0.lock().await.recv().await
+    }
+}
+
+pub fn has_qrcode(data: &[u8]) -> Result<bool> {
+    let image = image::load_from_memory(data)?.into_luma8();
+    let mut decoder = quircs::Quirc::default();
+    let codes = decoder.identify(image.width() as usize, image.height() as usize, image.as_bytes());
+    Ok(codes.count() > 0)
 }
