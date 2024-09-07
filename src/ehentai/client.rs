@@ -70,15 +70,15 @@ impl EhClient {
         Ok(Self(client))
     }
 
-    /// 使用指定参数查询符合要求的画廊列表
+    /// 访问指定页面，返回画廊列表
     #[tracing::instrument(skip(self, params))]
-    pub async fn search_skip<T: Serialize + ?Sized + Debug>(
+    async fn page<T: Serialize + ?Sized + Debug>(
         &self,
+        url: &str,
         params: &T,
-        next: i32,
-    ) -> Result<Vec<EhGalleryUrl>> {
-        let resp =
-            send!(self.0.get("https://exhentai.org").query(params).query(&[("next", next)]))?;
+        next: &str,
+    ) -> Result<(Vec<EhGalleryUrl>, Option<String>)> {
+        let resp = send!(self.0.get(url).query(params).query(&[("next", next)]))?;
         let html = Html::parse_document(&resp.text().await?);
 
         let selector = selector!("table.itg.gltc tr");
@@ -89,11 +89,15 @@ impl EhClient {
         for gl in gl_list.skip(1) {
             let title = gl.select_text("td.gl3c.glname a div.glink").unwrap();
             let url = gl.select_attr("td.gl3c.glname a", "href").unwrap();
-            info!(url, title);
+            debug!(url, title);
             ret.push(url.parse()?)
         }
 
-        Ok(ret)
+        let next = html
+            .select_attr("a#unext", "href")
+            .and_then(|s| s.rsplit('=').next().map(|s| s.to_string()));
+
+        Ok((ret, next))
     }
 
     /// 搜索前 N 页的本子，返回一个异步迭代器
@@ -102,23 +106,54 @@ impl EhClient {
         &'a self,
         params: &'a T,
     ) -> impl Stream<Item = EhGalleryUrl> + 'a {
-        stream::unfold(0, move |next| {
+        self.page_iter("https://exhentai.org", params)
+    }
+
+    /// 获取指定页面的画廊列表，返回一个异步迭代器
+    #[tracing::instrument(skip(self, params))]
+    pub fn page_iter<'a, T: Serialize + ?Sized + Debug>(
+        &'a self,
+        url: &'a str,
+        params: &'a T,
+    ) -> impl Stream<Item = EhGalleryUrl> + 'a {
+        stream::unfold(Some("0".to_string()), move |next| {
             async move {
-                match self.search_skip(params, next).await {
-                    Ok(gls) => {
-                        let next = gls.last().unwrap().id();
-                        info!("下一页 {}", next);
-                        Some((stream::iter(gls), next))
-                    }
-                    Err(e) => {
-                        error!("search error: {}", e);
-                        None
-                    }
+                match next {
+                    None => None,
+                    Some(next) => match self.page(url, params, &next).await {
+                        Ok((gls, next)) => {
+                            debug!("下一页 {:?}", next);
+                            Some((stream::iter(gls), next))
+                        }
+                        Err(e) => {
+                            error!("search error: {}", e);
+                            None
+                        }
+                    },
                 }
             }
             .in_current_span()
         })
         .flatten()
+    }
+
+    #[tracing::instrument(skip(self))]
+    pub async fn archive_gallery(&self, url: &EhGalleryUrl) -> Result<()> {
+        static RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"or=(?P<or>[0-9a-z-]+)").unwrap());
+
+        let resp = send!(self.0.get(url.url()))?;
+        let html = Html::parse_document(&resp.text().await?);
+        let onclick = html.select_attr("p.g2 a", "onclick").unwrap();
+
+        let or = RE.captures(&onclick).and_then(|c| c.name("or")).unwrap().as_str();
+
+        send!(self
+            .0
+            .post("https://exhentai.org/archiver.php")
+            .query(&[("gid", &*url.id().to_string()), ("token", url.token()), ("or", or)])
+            .form(&[("hathdl_xres", "org")]))?;
+
+        Ok(())
     }
 
     #[tracing::instrument(skip(self))]
@@ -130,7 +165,7 @@ impl EhClient {
             let html = Html::parse_document(&resp.text().await?);
 
             // 英文标题、日文标题、父画廊
-            let title = html.select_text("h1#gn").unwrap();
+            let title = html.select_text("h1#gn").expect("xpath fail: h1#gn");
             let title_jp = html.select_text("h1#gj");
             let parent = html.select_attr("td.gdt2 a", "href").and_then(|s| s.parse().ok());
 
@@ -138,13 +173,17 @@ impl EhClient {
             let mut tags = IndexMap::new();
             let selector = selector!("div#taglist tr");
             for ele in html.select(&selector) {
-                let namespace = ele.select_text("td.tc").unwrap().trim_matches(':').to_string();
+                let namespace = ele
+                    .select_text("td.tc")
+                    .expect("xpath fail: td.tc")
+                    .trim_matches(':')
+                    .to_string();
                 let tag = ele.select_texts("td div a");
                 tags.insert(namespace, tag);
             }
 
             // 收藏数量
-            let favorite = html.select_text("#favcount").unwrap();
+            let favorite = html.select_text("#favcount").expect("xpath fail: #favcount");
             let favorite = favorite.split(' ').next().unwrap().parse().unwrap();
 
             // 发布时间
@@ -207,7 +246,7 @@ impl EhClient {
 
 fn extract_fileindex(url: &str) -> Option<u32> {
     static RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"fileindex=(?P<fileindex>\d+)").unwrap());
-    let captures = RE.captures(&url)?;
+    let captures = RE.captures(url)?;
     let fileindex = captures.name("fileindex")?.as_str().parse().ok()?;
     Some(fileindex)
 }

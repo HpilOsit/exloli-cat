@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use anyhow::Result;
 use dashmap::DashMap;
@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use teloxide::prelude::*;
 use tokio::sync::mpsc::{channel, Receiver};
 use tokio::sync::Mutex;
+use tokio::time::sleep;
 use tracing::{info, warn};
 
 use crate::database::ChallengeView;
@@ -126,7 +127,7 @@ pub struct ChallengeProvider(Arc<Mutex<Receiver<Vec<ChallengeView>>>>);
 
 impl ChallengeProvider {
     pub fn new() -> Self {
-        let (tx, rx) = channel(10);
+        let (tx, rx) = channel(5);
         tokio::spawn(async move {
             loop {
                 match Self::_get_challenge().await {
@@ -145,6 +146,10 @@ impl ChallengeProvider {
     async fn _get_challenge() -> Result<Vec<ChallengeView>> {
         loop {
             let challenge = ChallengeView::get_random().await?;
+            if challenge.is_empty() {
+                sleep(Duration::from_secs(5)).await;
+                continue;
+            }
             let answer = &challenge[0];
             let url = format!("https://telegra.ph{}", answer.url);
             let resp = reqwest::get(&url).await?;
