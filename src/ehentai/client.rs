@@ -156,7 +156,7 @@ impl EhClient {
         Ok(())
     }
 
-    #[tracing::instrument(skip(self))]
+#[tracing::instrument(skip(self))]
     pub async fn get_gallery(&self, url: &EhGalleryUrl) -> Result<EhGallery> {
         // NOTE: 由于 Html 是 !Send 的，为了避免它被包含在 Future 上下文中，这里将它放在一个单独的作用域内
         // 参见：https://rust-lang.github.io/async-book/07_workarounds/03_send_approximation.html
@@ -191,7 +191,7 @@ impl EhClient {
             let posted = NaiveDateTime::parse_from_str(posted, "%Y-%m-%d %H:%M")?;
 
             // 每一页的 URL
-            let pages = html.select_attrs("div.gdtl a", "href");
+            let pages = html.select_attrs("div.gdtm a", "href");
 
             // 下一页的 URL
             let next_page = html.select_attr("table.ptt td:last-child a", "href");
@@ -203,7 +203,7 @@ impl EhClient {
             debug!(next_page_url);
             let resp = send!(self.0.get(next_page_url))?;
             let html = Html::parse_document(&resp.text().await?);
-            pages.extend(html.select_attrs("div.gdtl a", "href"));
+            pages.extend(html.select_attrs("div.gdtm a", "href"));
             next_page = html.select_attr("table.ptt td:last-child a", "href");
         }
 
@@ -225,7 +225,7 @@ impl EhClient {
         })
     }
 
-    /// 获取画廊的某一页的图片的 fileindex 和实际地址
+/// 获取画廊的某一页的图片的 fileindex 和实际地址
     #[tracing::instrument(skip(self))]
     pub async fn get_image_url(&self, page: &EhPageUrl) -> Result<(u32, String)> {
         let resp = send!(self.0.get(page.url()))?;
