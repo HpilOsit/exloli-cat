@@ -2,7 +2,6 @@ use crate::config::Catbox;
 use anyhow::Result;
 use reqwest::multipart;
 use tokio::io::AsyncRead;
-use tokio::fs::File;
 use tokio_util::io::ReaderStream;
 
 pub struct CatboxUploader {
@@ -11,6 +10,7 @@ pub struct CatboxUploader {
 }
 
 impl CatboxUploader {
+    /// 构造方法：从配置初始化
     pub fn new(catbox: &Catbox) -> Self {
         Self {
             api_url: catbox.api_url.clone(),
@@ -18,23 +18,37 @@ impl CatboxUploader {
         }
     }
 
-    /// Upload a file to Catbox
+    /// 上传文件到 Catbox
     pub async fn upload(&self, name: &str, file_path: &str) -> Result<String> {
         let client = reqwest::Client::new();
 
-        // Create the multipart form data
+        // 创建 multipart 表单数据
         let form = multipart::Form::new()
             .text("reqtype", "fileupload")
-            .text("userhash", self.userhash.clone().unwrap_or_default())
-            .file("fileToUpload", file_path)?;
+            .text(
+                "userhash",
+                self.userhash.clone().unwrap_or_else(|| "".to_string()), // 默认空字符串
+            )
+            .part(
+                "fileToUpload",
+                multipart::Part::file(file_path)?
+                    .mime_str("application/octet-stream")?,
+            );
 
-        // Send the POST request to the Catbox API
+        // 发送 POST 请求到 Catbox API
         let response = client.post(&self.api_url).multipart(form).send().await?;
 
-        // Check if the response is successful
+        // 检查响应状态
         if response.status().is_success() {
             let body = response.text().await?;
-            Ok(body) // Return the response body (uploaded file URL)
+            if body.starts_with("https://") {
+                Ok(body.trim().to_string()) // 返回文件 URL
+            } else {
+                Err(anyhow::anyhow!(
+                    "Unexpected response from Catbox: {}",
+                    body
+                ))
+            }
         } else {
             Err(anyhow::anyhow!(
                 "Failed to upload file: {}",
@@ -43,23 +57,47 @@ impl CatboxUploader {
         }
     }
 
-    /// Upload a file using an async reader (if needed)
+    /// 使用异步流上传文件
     pub async fn upload_from_reader<R: AsyncRead + Unpin>(
         &self,
         name: &str,
         reader: &mut R,
     ) -> Result<String> {
-        // Save the reader content to a temporary file
-        let temp_file_path = format!("/tmp/{}", name);
-        let mut temp_file = File::create(&temp_file_path).await?;
-        tokio::io::copy(reader, &mut temp_file).await?;
+        let client = reqwest::Client::new();
 
-        // Call the `upload` method to upload the file
-        let result = self.upload(name, &temp_file_path).await;
+        // 将异步流转换为 reqwest 支持的流
+        let stream = ReaderStream::new(reader);
+        let body = reqwest::Body::wrap_stream(stream);
 
-        // Clean up the temporary file
-        tokio::fs::remove_file(temp_file_path).await?;
+        // 创建 multipart 表单数据
+        let part = multipart::Part::stream(body).file_name(name.to_string());
+        let form = multipart::Form::new()
+            .text("reqtype", "fileupload")
+            .text(
+                "userhash",
+                self.userhash.clone().unwrap_or_else(|| "".to_string()),
+            )
+            .part("fileToUpload", part);
 
-        result
+        // 发送 POST 请求到 Catbox API
+        let response = client.post(&self.api_url).multipart(form).send().await?;
+
+        // 检查响应状态
+        if response.status().is_success() {
+            let body = response.text().await?;
+            if body.starts_with("https://") {
+                Ok(body.trim().to_string())
+            } else {
+                Err(anyhow::anyhow!(
+                    "Unexpected response from Catbox: {}",
+                    body
+                ))
+            }
+        } else {
+            Err(anyhow::anyhow!(
+                "Failed to upload file: {}",
+                response.status()
+            ))
+        }
     }
 }
