@@ -66,7 +66,7 @@ pub struct Catbox {
     /// Catbox userhash (optional for anonymous uploads)
     pub userhash: Option<String>,
     /// Catbox API URL
-    pub upload_url: String,
+    pub api_url: String,
 }
 
 impl Config {
