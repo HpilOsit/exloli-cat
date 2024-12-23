@@ -217,7 +217,7 @@ impl ExloliUploader {
                     let uploaded_url = catbox_uploader.upload_file(&filename).await?;
                     debug!("已上传: {}", page.page());
                     //let final_url = format!("https://{}/{}", uploaded_url);
-                    ImageEntity::create(fileindex, page.hash(), &final_url).await?;
+                    ImageEntity::create(fileindex, page.hash(), &uploaded_url).await?;
                     PageEntity::create(page.gallery_id(), page.page(), fileindex).await?;
                 }
                 Result::<()>::Ok(())
