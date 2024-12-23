@@ -40,6 +40,7 @@ where
     })
 }
 
+#[allow(dead_code)]
 pub fn filter_member<C, Output>(
     chat_id: C,
     status: ChatMemberKind,
@@ -65,6 +66,7 @@ where
     })
 }
 
+#[allow(dead_code)]
 pub fn filter_private_chat<Output>() -> Handler<'static, DependencyMap, Output, DpHandlerDescription>
 where
     Output: Send + Sync + 'static,
