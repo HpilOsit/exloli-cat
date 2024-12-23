@@ -6,14 +6,14 @@ use tokio::fs::File;
 use tokio_util::io::ReaderStream;
 
 pub struct CatboxUploader {
-    upload_url: String,
+    api_url: String,
     userhash: Option<String>,
 }
 
 impl CatboxUploader {
     pub fn new(catbox: &Catbox) -> Self {
         Self {
-            upload_url: catbox.upload_url.clone(),
+            api_url: catbox.api_url.clone(),
             userhash: catbox.userhash.clone(),
         }
     }
@@ -29,7 +29,7 @@ impl CatboxUploader {
             .file("fileToUpload", file_path)?;
 
         // Send the POST request to the Catbox API
-        let response = client.post(&self.upload_url).multipart(form).send().await?;
+        let response = client.post(&self.api_url).multipart(form).send().await?;
 
         // Check if the response is successful
         if response.status().is_success() {
