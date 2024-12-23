@@ -1,4 +1,5 @@
 use std::time::Duration;
+
 use anyhow::Result;
 use duration_str::deserialize_duration;
 use once_cell::sync::OnceCell;
@@ -21,7 +22,7 @@ pub struct Config {
     pub exhentai: ExHentai,
     pub telegraph: Telegraph,
     pub telegram: Telegram,
-    pub catbox: Catbox, // 使用 Catbox 替代 R2
+    pub catbox: Catbox,  // Catbox 配置
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -62,10 +63,7 @@ pub struct Telegram {
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct Catbox {
-    /// Catbox userhash (可选)
-    pub userhash: Option<String>,
-    /// Catbox API URL
-    pub api_url: String,
+    pub userhash: String,  // Catbox 用户的 userhash
 }
 
 impl Config {
