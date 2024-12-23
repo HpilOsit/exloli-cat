@@ -51,7 +51,7 @@ impl ExloliUploader {
     /// 每隔 interval 分钟检查一次
     pub async fn start(&self) {
         loop {
-            info!("开始扫描 E 站 本子");
+            info!("开始扫描 E 站本子");
             self.check().await;
             info!("扫描完毕，等待 {:?} 后继续", self.config.interval);
             time::sleep(self.config.interval).await;
@@ -118,7 +118,7 @@ impl ExloliUploader {
         Ok(())
     }
 
-    /// 检查指定画廊是否有更新，比如标题、标签
+        /// 检查指定画廊是否有更新，比如标题、标签
     #[tracing::instrument(skip(self))]
     pub async fn try_update(&self, gallery: &EhGalleryUrl, check: bool) -> Result<()> {
         let entity = match GalleryEntity::get(gallery.id()).await? {
