@@ -1,4 +1,3 @@
-use crate::config::Catbox;
 use anyhow::Result;
 use reqwest::multipart;
 use tokio::io::AsyncRead;
@@ -51,7 +50,7 @@ impl CatboxUploader {
     ) -> Result<String> {
         let client = reqwest::Client::new();
         let stream = ReaderStream::new(reader);
-        let body = reqwest::Body::wrap_stream(stream);
+        let body = reqwest::Body::wrap(stream);
 
         let part = multipart::Part::stream(body).file_name(name.to_string());
         let form = multipart::Form::new()
