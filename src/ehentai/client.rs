@@ -43,16 +43,18 @@ impl EhClient {
     #[tracing::instrument(skip(cookie))]
     pub async fn new(cookie: &str) -> Result<Self> {
         info!("登陆 E 站中");
+        // 将 cookie 日志级别改为 debug，避免在生产环境泄露敏感信息
+        debug!("cookie: {}", cookie);
         let headers = headers! {
-            ACCEPT => "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-            ACCEPT_ENCODING => "gzip, deflate, br",
-            ACCEPT_LANGUAGE => "zh-CN,en-US;q=0.7,en;q=0.3",
+            ACCEPT => "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+            ACCEPT_ENCODING => "gzip, deflate, br", 
+            ACCEPT_LANGUAGE => "zh-CN,zh;q=0.9,en;q=0.8",
             CACHE_CONTROL => "max-age=0",
             CONNECTION => "keep-alive",
             HOST => "exhentai.org",
             REFERER => "https://exhentai.org",
             UPGRADE_INSECURE_REQUESTS => "1",
-            USER_AGENT => "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:67.0) Gecko/20100101 Firefox/67.0",
+            USER_AGENT => "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             COOKIE => cookie
         };
 
@@ -66,6 +68,7 @@ impl EhClient {
         // 获取必要的 cookie
         let _response = send!(client.get("https://exhentai.org/uconfig.php"))?;
         let _response = send!(client.get("https://exhentai.org/mytags"))?;
+        debug!("mytags: {}", _response.text().await?);
 
         Ok(Self(client))
     }
@@ -191,7 +194,7 @@ impl EhClient {
             let posted = NaiveDateTime::parse_from_str(posted, "%Y-%m-%d %H:%M")?;
 
             // 每一页的 URL
-            let pages = html.select_attrs("div#gdt a", "href");
+            let pages = html.select_attrs("#gdt a", "href");
 
             // 下一页的 URL
             let next_page = html.select_attr("table.ptt td:last-child a", "href");
@@ -203,7 +206,7 @@ impl EhClient {
             debug!(next_page_url);
             let resp = send!(self.0.get(next_page_url))?;
             let html = Html::parse_document(&resp.text().await?);
-            pages.extend(html.select_attrs("div#gdt a", "href"));
+            pages.extend(html.select_attrs("#gdt a", "href"));
             next_page = html.select_attr("table.ptt td:last-child a", "href");
         }
 
@@ -245,9 +248,8 @@ impl EhClient {
 }
 
 fn extract_fileindex(url: &str) -> Option<u32> {
-    static RE1: Lazy<Regex> = Lazy::new(|| Regex::new(r"fileindex=(?P<fileindex>\d+)").unwrap());
-    static RE2: Lazy<Regex> = Lazy::new(|| Regex::new(r"/om/(?P<fileindex>\d+)/").unwrap());
-    let captures = RE1.captures(url).or_else(|| RE2.captures(url))?;
+    static RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"fileindex=(?P<fileindex>\d+)").unwrap());
+    let captures = RE.captures(url)?;
     let fileindex = captures.name("fileindex")?.as_str().parse().ok()?;
     Some(fileindex)
 }
