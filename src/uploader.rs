@@ -219,7 +219,7 @@ impl ExloliUploader {
 
         // 使用 CatboxUploader 代替原来的 R2Uploader
         let catbox_uploader = CatboxUploader::new(
-            self.config.catbox.upload_url.clone()，  
+            self.config.catbox.api_url.clone()，  
             self.config.catbox.userhash.clone(),   
         );
 
