@@ -1,8 +1,8 @@
-use reqwest::multipart;
+use reqwest::multipart::{Form, Part};
 use reqwest::Client;
 use anyhow::{Result, anyhow};
 use tokio::fs::File;
-use tokio::io::AsyncReadExt;
+use std::path::Path;
 
 pub struct CatboxUploader {
     userhash: String,  // Catbox 用户的 userhash
@@ -20,24 +20,24 @@ impl CatboxUploader {
 
     // 上传文件到 Catbox
     pub async fn upload_file(&self, file_path: &str) -> Result<String> {
-        // 打开文件
-        let file = File::open(file_path).await?;
-        let form = multipart::Form::new()
+        // 创建文件部分
+        let file = Part::file(file_path)?;
+        let form = Form::new()
             .text("reqtype", "fileupload")
             .text("userhash", self.userhash.clone())
-            .file("fileToUpload", file_path)?;
+            .part("fileToUpload", file);  // 使用 .part() 添加文件部分
 
-        // 向 Catbox API 发起请求
+        // 发起 POST 请求
         let res = self.client.post("https://catbox.moe/user/api.php")
             .multipart(form)
             .send()
             .await?;
 
-        // 解析响应
+        // 检查上传是否成功
         if res.status().is_success() {
             let json: serde_json::Value = res.json().await?;
             if let Some(url) = json["fileURL"].as_str() {
-                Ok(url.to_string())  // 返回上传成功后的文件URL
+                Ok(url.to_string())  // 返回上传成功后的文件 URL
             } else {
                 Err(anyhow!("Failed to get file URL from response"))
             }
@@ -46,22 +46,24 @@ impl CatboxUploader {
         }
     }
 
-    // 上传 URL 到 Catbox
+    // 上传图片 URL到 Catbox
     pub async fn upload_url(&self, image_url: &str) -> Result<String> {
-        let form = multipart::Form::new()
+        let form = Form::new()
             .text("reqtype", "urlupload")
             .text("userhash", self.userhash.clone())
-            .text("url", image_url);
+            .text("url", image_url.to_string()); // 使用 to_string() 确保生命周期有效
 
+        // 发起 POST 请求
         let res = self.client.post("https://catbox.moe/user/api.php")
             .multipart(form)
             .send()
             .await?;
 
+        // 检查上传是否成功
         if res.status().is_success() {
             let json: serde_json::Value = res.json().await?;
             if let Some(url) = json["fileURL"].as_str() {
-                Ok(url.to_string())
+                Ok(url.to_string())  // 返回上传成功后的文件 URL
             } else {
                 Err(anyhow!("Failed to get file URL from response"))
             }
