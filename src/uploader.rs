@@ -216,9 +216,8 @@ impl ExloliUploader {
             }
             .in_current_span(),
         );
-
     // 使用 CatboxUploader 代替原来的 R2Uploader
-    let catbox = CatboxUploader::new(&self.config.catbox);
+    let catbox = CatboxUploader::new(&self.config.catbox);    
     // 初始化 HTTP 客户端
     let client = Client::builder()
         .timeout(Duration::from_secs(30))
@@ -261,7 +260,6 @@ impl ExloliUploader {
     tokio::try_join!(flatten(getter), flatten(uploader))?;
     
     Ok(())
-
 
     /// 从数据库中读取某个画廊的所有图片，生成一篇 telegraph 文章
     /// 为了防止画廊被删除后无法更新，此处不应该依赖 EhGallery
