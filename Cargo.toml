@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 # reqwest 设置为版本 0.12，启用 multipart 和 json 特性
-reqwest = { version = "0.12.5", features = ["multipart", "json"] }
+reqwest = { version = "0.12.5", features = ["cookies", "multipart", "json"] }
 
 # 其他依赖项
 anyhow = "1.0.86"
