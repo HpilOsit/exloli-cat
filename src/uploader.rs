@@ -260,6 +260,8 @@ impl ExloliUploader {
     tokio::try_join!(flatten(getter), flatten(uploader))?;
     
     Ok(())
+        
+    }
 
     /// 从数据库中读取某个画廊的所有图片，生成一篇 telegraph 文章
     /// 为了防止画廊被删除后无法更新，此处不应该依赖 EhGallery
