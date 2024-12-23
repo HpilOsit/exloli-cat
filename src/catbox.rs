@@ -5,7 +5,7 @@ use tokio::fs::File;
 use tokio::io::AsyncReadExt;
 
 pub struct CatboxUploader {
-    userhash: String,  // Catbox 用户的 userhash（可以通过注册获得）
+    userhash: String,  // Catbox 用户的 userhash
     client: Client,    // 用于发起 HTTP 请求的 client
 }
 
@@ -18,12 +18,10 @@ impl CatboxUploader {
         }
     }
 
+    // 上传文件到 Catbox
     pub async fn upload_file(&self, file_path: &str) -> Result<String> {
         // 打开文件
         let file = File::open(file_path).await?;
-        let file_name = file_path.split('/').last().unwrap_or("image");
-        
-        // 创建multipart请求体
         let form = multipart::Form::new()
             .text("reqtype", "fileupload")
             .text("userhash", self.userhash.clone())
@@ -48,6 +46,7 @@ impl CatboxUploader {
         }
     }
 
+    // 上传 URL 到 Catbox
     pub async fn upload_url(&self, image_url: &str) -> Result<String> {
         let form = multipart::Form::new()
             .text("reqtype", "urlupload")
