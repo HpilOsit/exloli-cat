@@ -6,6 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+tokio-util = "0.7.7" 
 anyhow = "1.0.86"
 aws-creds = { version = "0.37.0", default-features = false }
 aws-region = "0.25.5"
