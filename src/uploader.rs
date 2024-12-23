@@ -217,55 +217,55 @@ impl ExloliUploader {
             .in_current_span(),
         );
 
-    // 使用 CatboxUploader 代替原来的 R2Uploader
-    let catbox_uploader = CatboxUploader::new(
-        self.config.catbox.api_url.clone(),
-        self.config.catbox.user_hash.clone(),
-    );
-    
-    // 初始化 HTTP 客户端
-    let client = Client::builder()
-        .timeout(Duration::from_secs(30))
-        .connect_timeout(Duration::from_secs(30))
-        .build()?;
-    
-    // 异步上传逻辑
-    let uploader = tokio::spawn(
-        async move {
-            // TODO: 还可以考虑并发上传多个图片，减少请求总数以应对 Telegraph API 的 rate limit 限制
-            while let Some((page, (fileindex, url))) = rx.recv().await {
-                let suffix = url.split('.').last().unwrap_or("jpg");
-                
-                if suffix == "gif" {
-                    continue; // 跳过 GIF 动图，Catbox 不支持该格式
-                }
-    
-                // 文件名以页面哈希和扩展名生成
-                let filename = format!("{}.{}", page.hash(), suffix);
-                
-                // 下载图片数据
-                let bytes = client.get(url).send().await?.bytes().await?;
-                debug!("已下载页面: {}", page.page());
-    
-                // 上传图片到 Catbox
-                let uploaded_url = catbox_uploader.upload(&filename, &bytes).await?;
-                debug!("已上传到 Catbox: {}", uploaded_url);
-    
-                // 插入数据库记录
-                ImageEntity::create(fileindex, page.hash(), &uploaded_url).await?;
-                PageEntity::create(page.gallery_id(), page.page(), fileindex).await?;
-            }
-    
-            Result::<()>::Ok(())
-        }
-        .in_current_span(),
-    );
-    
-    // 等待所有任务完成
-    tokio::try_join!(flatten(getter), flatten(uploader))?;
-    
-    Ok(())
+        // 使用 CatboxUploader 代替原来的 R2Uploader
+        let catbox_uploader = CatboxUploader::new(
+            self.config.catbox.api_url.clone(),
+            self.config.catbox.user_hash.clone(),
+        );
 
+        // 初始化 HTTP 客户端
+        let client = Client::builder()
+            .timeout(Duration::from_secs(30))
+            .connect_timeout(Duration::from_secs(30))
+            .build()?;
+
+        // 异步上传逻辑
+        let uploader = tokio::spawn(
+            async move {
+                // TODO: 还可以考虑并发上传多个图片，减少请求总数以应对 Telegraph API 的 rate limit 限制
+                while let Some((page, (fileindex, url))) = rx.recv().await {
+                    let suffix = url.split('.').last().unwrap_or("jpg");
+
+                    if suffix == "gif" {
+                        continue; // 跳过 GIF 动图，Catbox 不支持该格式
+                    }
+
+                    // 文件名以页面哈希和扩展名生成
+                    let filename = format!("{}.{}", page.hash(), suffix);
+
+                    // 下载图片数据
+                    let bytes = client.get(url).send().await?.bytes().await?;
+                    debug!("已下载页面: {}", page.page());
+
+                    // 上传图片到 Catbox
+                    let uploaded_url = catbox_uploader.upload(&filename, &bytes).await?;
+                    debug!("已上传到 Catbox: {}", uploaded_url);
+
+                    // 插入数据库记录
+                    ImageEntity::create(fileindex, page.hash(), &uploaded_url).await?;
+                    PageEntity::create(page.gallery_id(), page.page(), fileindex).await?;
+                }
+
+                Result::<()>::Ok(())
+            }
+            .in_current_span(),
+        );
+
+        // 等待所有任务完成
+        tokio::try_join!(flatten(getter), flatten(uploader))?;
+
+        Ok(())
+    } // <-- 修复此处缺失的结束大括号
 
     /// 从数据库中读取某个画廊的所有图片，生成一篇 telegraph 文章
     /// 为了防止画廊被删除后无法更新，此处不应该依赖 EhGallery
@@ -277,7 +277,7 @@ impl ExloliUploader {
 
         let mut html = String::new();
         if gallery.cover() != 0 && gallery.cover() < images.len() {
-            html.push_str(&format!(r#"<img src="{}">"#, images[gallery.cover()].url()))
+            html.push_str(&format!(r#"<img src="{}">"#, images[gallery.cover()].url()));
         }
         for img in images {
             html.push_str(&format!(r#"<img src="{}">"#, img.url()));
@@ -307,11 +307,11 @@ impl ExloliUploader {
                 .map(|s| format!("#{}", re.replace_all(s, "_")))
                 .collect::<Vec<_>>()
                 .join(" ");
-            text.push_str(&format!("{}: {}\n", code_inline(&pad_left(&ns, 6)), tag))
+            text.push_str(&format!("{}: {}\n", code_inline(&pad_left(&ns, 6)), tag));
         }
 
         text.push_str(
-            &format!("{}: {}\n", code_inline("  预览"), link(article, &gallery.title()),),
+            &format!("{}: {}\n", code_inline("  预览"), link(article, &gallery.title())),
         );
         text.push_str(&format!("{}: {}", code_inline("原始地址"), gallery.url().url()));
 
@@ -324,49 +324,5 @@ async fn flatten<T>(handle: JoinHandle<Result<T>>) -> Result<T> {
         Ok(Ok(result)) => Ok(result),
         Ok(Err(err)) => Err(err),
         Err(err) => bail!(err),
-    }
-}
-
-impl ExloliUploader {
-    /// 重新扫描并上传没有上传过但存在记录的画廊
-    pub async fn reupload(&self, mut galleries: Vec<GalleryEntity>) -> Result<()> {
-        if galleries.is_empty() {
-            galleries = GalleryEntity::list_scans().await?;
-        }
-        for gallery in galleries.iter().rev() {
-            if let Some(score) = PollEntity::get_by_gallery(gallery.id).await? {
-                if score.score > 0.8 {
-                    info!("尝试上传画廊：{}", gallery.url());
-                    if let Err(err) = self.try_upload(&gallery.url(), true).await {
-                        error!("上传失败：{}", err);
-                    }
-                    time::sleep(Duration::from_secs(60)).await;
-                }
-            }
-        }
-        Ok(())
-    }
-
-    /// 重新检测已上传过的画廊预览是否有效，并重新上传
-    pub async fn recheck(&self, mut galleries: Vec<GalleryEntity>) -> Result<()> {
-        if galleries.is_empty() {
-            galleries = GalleryEntity::list_scans().await?;
-        }
-        for gallery in galleries.iter().rev() {
-            let telegraph =
-                TelegraphEntity::get(gallery.id).await?.ok_or(anyhow!("找不到 telegraph"))?;
-            if let Some(msg) = MessageEntity::get_by_gallery(gallery.id).await? {
-                info!("检测画廊：{}", gallery.url());
-                if !self.check_telegraph(&telegraph.url).await? {
-                    info!("重新上传预览：{}", gallery.url());
-                    if let Err(err) = self.republish(gallery, &msg).await {
-                        error!("上传失败：{}", err);
-                    }
-                    time::sleep(Duration::from_secs(60)).await;
-                }
-            }
-            time::sleep(Duration::from_secs(1)).await;
-        }
-        Ok(())
     }
 }
