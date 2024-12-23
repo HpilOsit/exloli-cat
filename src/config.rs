@@ -1,10 +1,10 @@
 use std::time::Duration;
-
 use anyhow::Result;
 use duration_str::deserialize_duration;
 use once_cell::sync::OnceCell;
 use serde::Deserialize;
 use teloxide::types::{ChatId, Recipient};
+use reqwest::multipart;
 
 pub static CHANNEL_ID: OnceCell<String> = OnceCell::new();
 
@@ -22,7 +22,7 @@ pub struct Config {
     pub exhentai: ExHentai,
     pub telegraph: Telegraph,
     pub telegram: Telegram,
-    pub r2: R2,
+    pub catbox: Catbox, // Replaced `r2` with `catbox`
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -62,17 +62,11 @@ pub struct Telegram {
 }
 
 #[derive(Debug, Clone, Deserialize)]
-pub struct R2 {
-    /// cloudflare 用户 id
-    pub account_id: String,
-    /// bucket 名称
-    pub bucket: String,
-    /// access-key
-    pub access_key: String,
-    /// secret-key
-    pub secret_key: String,
-    /// 访问连接
-    pub host: String,
+pub struct Catbox {
+    /// Catbox userhash (optional for anonymous uploads)
+    pub userhash: Option<String>,
+    /// Catbox API URL
+    pub upload_url: String,
 }
 
 impl Config {
