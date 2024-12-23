@@ -1,103 +1,73 @@
-use crate::config::Catbox;
-use anyhow::Result;
 use reqwest::multipart;
-use tokio::io::AsyncRead;
-use tokio_util::io::ReaderStream;
+use reqwest::Client;
+use anyhow::{Result, anyhow};
+use tokio::fs::File;
+use tokio::io::AsyncReadExt;
 
 pub struct CatboxUploader {
-    api_url: String,
-    userhash: Option<String>,
+    userhash: String,  // Catbox 用户的 userhash（可以通过注册获得）
+    client: Client,    // 用于发起 HTTP 请求的 client
 }
 
 impl CatboxUploader {
-    /// 构造方法：从配置初始化
-    pub fn new(catbox: &Catbox) -> Self {
+    pub fn new(userhash: &str) -> Self {
+        let client = Client::new();
         Self {
-            api_url: catbox.api_url.clone(),
-            userhash: catbox.userhash.clone(),
+            userhash: userhash.to_string(),
+            client,
         }
     }
 
-    /// 上传文件到 Catbox
-    pub async fn upload(&self, name: &str, file_path: &str) -> Result<String> {
-        let client = reqwest::Client::new();
-
-        // 创建 multipart 表单数据
+    pub async fn upload_file(&self, file_path: &str) -> Result<String> {
+        // 打开文件
+        let file = File::open(file_path).await?;
+        let file_name = file_path.split('/').last().unwrap_or("image");
+        
+        // 创建multipart请求体
         let form = multipart::Form::new()
             .text("reqtype", "fileupload")
-            .text(
-                "userhash",
-                self.userhash.clone().unwrap_or_else(|| "".to_string()), // 默认空字符串
-            )
-            .part(
-                "fileToUpload",
-                multipart::Part::file(file_path)?
-                    .mime_str("application/octet-stream")?,
-            );
+            .text("userhash", self.userhash.clone())
+            .file("fileToUpload", file_path)?;
 
-        // 发送 POST 请求到 Catbox API
-        let response = client.post(&self.api_url).multipart(form).send().await?;
+        // 向 Catbox API 发起请求
+        let res = self.client.post("https://catbox.moe/user/api.php")
+            .multipart(form)
+            .send()
+            .await?;
 
-        // 检查响应状态
-        if response.status().is_success() {
-            let body = response.text().await?;
-            if body.starts_with("https://") {
-                Ok(body.trim().to_string()) // 返回文件 URL
+        // 解析响应
+        if res.status().is_success() {
+            let json: serde_json::Value = res.json().await?;
+            if let Some(url) = json["fileURL"].as_str() {
+                Ok(url.to_string())  // 返回上传成功后的文件URL
             } else {
-                Err(anyhow::anyhow!(
-                    "Unexpected response from Catbox: {}",
-                    body
-                ))
+                Err(anyhow!("Failed to get file URL from response"))
             }
         } else {
-            Err(anyhow::anyhow!(
-                "Failed to upload file: {}",
-                response.status()
-            ))
+            Err(anyhow!("Failed to upload file"))
         }
     }
 
-    /// 使用异步流上传文件
-    pub async fn upload_from_reader<R: AsyncRead + Unpin>(
-        &self,
-        name: &str,
-        reader: &mut R,
-    ) -> Result<String> {
-        let client = reqwest::Client::new();
-
-        // 将异步流转换为 reqwest 支持的流
-        let stream = ReaderStream::new(reader);
-        let body = reqwest::Body::wrap_stream(stream);
-
-        // 创建 multipart 表单数据
-        let part = multipart::Part::stream(body).file_name(name.to_string());
+    pub async fn upload_url(&self, image_url: &str) -> Result<String> {
         let form = multipart::Form::new()
-            .text("reqtype", "fileupload")
-            .text(
-                "userhash",
-                self.userhash.clone().unwrap_or_else(|| "".to_string()),
-            )
-            .part("fileToUpload", part);
+            .text("reqtype", "urlupload")
+            .text("userhash", self.userhash.clone())
+            .text("url", image_url);
 
-        // 发送 POST 请求到 Catbox API
-        let response = client.post(&self.api_url).multipart(form).send().await?;
+        let res = self.client.post("https://catbox.moe/user/api.php")
+            .multipart(form)
+            .send()
+            .await?;
 
-        // 检查响应状态
-        if response.status().is_success() {
-            let body = response.text().await?;
-            if body.starts_with("https://") {
-                Ok(body.trim().to_string())
+        if res.status().is_success() {
+            let json: serde_json::Value = res.json().await?;
+            if let Some(url) = json["fileURL"].as_str() {
+                Ok(url.to_string())
             } else {
-                Err(anyhow::anyhow!(
-                    "Unexpected response from Catbox: {}",
-                    body
-                ))
+                Err(anyhow!("Failed to get file URL from response"))
             }
         } else {
-            Err(anyhow::anyhow!(
-                "Failed to upload file: {}",
-                response.status()
-            ))
+            Err(anyhow!("Failed to upload URL"))
         }
     }
 }
