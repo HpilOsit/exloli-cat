@@ -3,13 +3,12 @@ name = "exloli-cat"
 version = "0.4.0"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-[dependencies.reqwest]
-version = "0.11"
-features = ["cookies"]
 [dependencies]
-anyhow = "1.0.86"
+# reqwest 设置为版本 0.12，启用 multipart 和 json 特性
 reqwest = { version = "0.12.5", features = ["multipart", "json"] }
+
+# 其他依赖项
+anyhow = "1.0.86"
 tokio = { version = "1.39.2", features = ["time", "rt-multi-thread", "macros"] }
 tokio-util = "0.7.7"
 duration-str = { version = "0.7.1", default-features = false, features = ["serde"] }
@@ -29,7 +28,7 @@ tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
 dashmap = "6.0.1"              
 futures = "0.3.30"              
 glob = "0.3.1"                 
-image = { version = "0.25.2", default-features = false, features = ["jpeg", "png", "rayon", "gif"] }
+image = { version = "0.25.2", default-features = false, features = ["jpeg", "png"] }
 quircs = "0.10.2"              
 rand = "0.8.5"                  
 thiserror = "1.0.63" 
@@ -38,4 +37,3 @@ indexmap = { version = "2.3.0", features = ["serde"] }
 
 [profile.dev.package.sqlx-macros]
 opt-level = 3
-
