@@ -20,7 +20,7 @@ use crate::database::{
     GalleryEntity, ImageEntity, MessageEntity, PageEntity, PollEntity, TelegraphEntity,
 };
 use crate::ehentai::{EhClient, EhGallery, EhGalleryUrl, GalleryInfo};
-use crate::s3::R2Uploader;
+use crate::catbox::CatboxUploader;
 use crate::tags::EhTagTransDB;
 use crate::utils::pad_left;
 
@@ -217,39 +217,55 @@ impl ExloliUploader {
             .in_current_span(),
         );
 
-        // 依次将图片下载并上传到 r2，并插入 ImageEntity 和 PageEntity 记录
-        let r2 = R2Uploader::new(&self.config.r2)?;
-        let host = self.config.r2.host.clone();
-        let client = Client::builder()
-            .timeout(Duration::from_secs(30))
-            .connect_timeout(Duration::from_secs(30))
-            .build()?;
-        let uploader = tokio::spawn(
-            async move {
-                // TODO: 此处可以考虑一次上传多个图片，减少请求次数，避免触发 telegraph 的 rate limit
-                while let Some((page, (fileindex, url))) = rx.recv().await {
-                    let suffix = url.split('.').last().unwrap_or("jpg");
-                    if suffix == "gif" {
-                        continue;
-                    }
-                    let filename = format!("{}.{}", page.hash(), suffix);
-                    let bytes = client.get(url).send().await?.bytes().await?;
-                    debug!("已下载: {}", page.page());
-                    r2.upload(&filename, &mut bytes.as_ref()).await?;
-                    debug!("已上传: {}", page.page());
-                    let url = format!("https://{}/{}", host, filename);
-                    ImageEntity::create(fileindex, page.hash(), &url).await?;
-                    PageEntity::create(page.gallery_id(), page.page(), fileindex).await?;
+    // 使用 CatboxUploader 代替原来的 R2Uploader
+    let catbox_uploader = CatboxUploader::new(
+        self.config.catbox.api_url.clone(),
+        self.config.catbox.user_hash.clone(),
+    );
+    
+    // 初始化 HTTP 客户端
+    let client = Client::builder()
+        .timeout(Duration::from_secs(30))
+        .connect_timeout(Duration::from_secs(30))
+        .build()?;
+    
+    // 异步上传逻辑
+    let uploader = tokio::spawn(
+        async move {
+            // TODO: 还可以考虑并发上传多个图片，减少请求总数以应对 Telegraph API 的 rate limit 限制
+            while let Some((page, (fileindex, url))) = rx.recv().await {
+                let suffix = url.split('.').last().unwrap_or("jpg");
+                
+                if suffix == "gif" {
+                    continue; // 跳过 GIF 动图，Catbox 不支持该格式
                 }
-                Result::<()>::Ok(())
+    
+                // 文件名以页面哈希和扩展名生成
+                let filename = format!("{}.{}", page.hash(), suffix);
+                
+                // 下载图片数据
+                let bytes = client.get(url).send().await?.bytes().await?;
+                debug!("已下载页面: {}", page.page());
+    
+                // 上传图片到 Catbox
+                let uploaded_url = catbox_uploader.upload(&filename, &bytes).await?;
+                debug!("已上传到 Catbox: {}", uploaded_url);
+    
+                // 插入数据库记录
+                ImageEntity::create(fileindex, page.hash(), &uploaded_url).await?;
+                PageEntity::create(page.gallery_id(), page.page(), fileindex).await?;
             }
-            .in_current_span(),
-        );
+    
+            Result::<()>::Ok(())
+        }
+        .in_current_span(),
+    );
+    
+    // 等待所有任务完成
+    tokio::try_join!(flatten(getter), flatten(uploader))?;
+    
+    Ok(())
 
-        tokio::try_join!(flatten(getter), flatten(uploader))?;
-
-        Ok(())
-    }
 
     /// 从数据库中读取某个画廊的所有图片，生成一篇 telegraph 文章
     /// 为了防止画廊被删除后无法更新，此处不应该依赖 EhGallery
