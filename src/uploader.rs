@@ -203,7 +203,7 @@ impl ExloliUploader {
         );
 
         let catbox_uploader = CatboxUploader::new(&self.config.catbox.userhash);
-        let host = self.config.catbox.host.clone();
+        // let host = self.config.catbox.host.clone();
         let client = Client::builder()
             .timeout(Duration::from_secs(30))
             .connect_timeout(Duration::from_secs(30))
@@ -214,7 +214,7 @@ impl ExloliUploader {
                     let filename = format!("{}.{}", page.hash(), url.split('.').last().unwrap_or("jpg"));
                     let bytes = client.get(url).send().await?.bytes().await?;
                     debug!("已下载: {}", page.page());
-                    let uploaded_url = catbox_uploader.upload_file(&filename, &mut bytes.as_ref()).await?;
+                    let uploaded_url = catbox_uploader.upload_file(&filename).await?;
                     debug!("已上传: {}", page.page());
                     let final_url = format!("https://{}/{}", host, uploaded_url);
                     ImageEntity::create(fileindex, page.hash(), &final_url).await?;
