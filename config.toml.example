@@ -46,5 +46,4 @@ bot_id ="test_bot"
 token = "xxxx:xxxxxxxx"
 
 [catbox]
-api_url = "https://catbox.moe/user/api.php"
 userhash = "your_userhash_here"
