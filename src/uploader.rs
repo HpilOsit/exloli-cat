@@ -212,11 +212,11 @@ impl ExloliUploader {
             async move {
                 while let Some((page, (fileindex, url))) = rx.recv().await {
                     let filename = format!("{}.{}", page.hash(), url.split('.').last().unwrap_or("jpg"));
-                    let bytes = client.get(url).send().await?.bytes().await?;
+                    //let bytes = client.get(url).send().await?.bytes().await?;
                     debug!("已下载: {}", page.page());
                     let uploaded_url = catbox_uploader.upload_file(&filename).await?;
                     debug!("已上传: {}", page.page());
-                    let final_url = format!("https://{}/{}", uploaded_url);
+                    //let final_url = format!("https://{}/{}", uploaded_url);
                     ImageEntity::create(fileindex, page.hash(), &final_url).await?;
                     PageEntity::create(page.gallery_id(), page.page(), fileindex).await?;
                 }
