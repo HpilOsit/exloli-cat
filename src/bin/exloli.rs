@@ -1,11 +1,11 @@
 use std::env;
 
 use anyhow::Result;
-use exloli_next::bot::start_dispatcher;
-use exloli_next::config::{Config, CHANNEL_ID};
-use exloli_next::ehentai::EhClient;
-use exloli_next::tags::EhTagTransDB;
-use exloli_next::uploader::ExloliUploader;
+use exloli_cat::bot::start_dispatcher;
+use exloli_cat::config::{Config, CHANNEL_ID};
+use exloli_cat::ehentai::EhClient;
+use exloli_cat::tags::EhTagTransDB;
+use exloli_cat::uploader::ExloliUploader;
 use teloxide::prelude::*;
 use teloxide::types::ParseMode;
 
