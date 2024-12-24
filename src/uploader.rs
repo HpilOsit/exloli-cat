@@ -47,6 +47,7 @@ impl ExloliUploader {
             .await?;
         Ok(Self { ehentai, config, telegraph, bot, trans })
     }
+}
 
 impl ExloliUploader {
     // 负责上传图片到 Catbox，并同时创建专辑
