@@ -241,8 +241,7 @@ impl EhClient {
         return if send!(self.0.head(&url)).is_ok() {
             Ok((fileindex, url))
         } else if nl.is_some() {
-            //let resp = send!(self.0.get(&page.with_nl(&nl.unwrap()).url()))?;
-            let resp = send!(self.0.get(page.url()))?;
+            let resp = send!(self.0.get(&page.with_nl(&nl.unwrap()).url()))?;
             let html = Html::parse_document(&resp.text().await?);
             let url = html.select_attr("img#img", "src").unwrap();
             Ok((fileindex, url))
