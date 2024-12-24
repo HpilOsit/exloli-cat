@@ -3,6 +3,7 @@ use reqwest::Client;
 use anyhow::{Result, anyhow};
 use tokio::io::AsyncReadExt;
 
+#[derive(Debug, Clone)]
 pub struct CatboxUploader {
     userhash: String,  // Catbox 用户的 userhash
     client: Client,    // HTTP 客户端
@@ -111,11 +112,11 @@ impl CatboxUploader {
         let files = file_urls.join(" "); // 文件列表
 
         let form = Form::new()
-            .text("reqtype", "editalbum") // 请求类型：编辑专辑
-            .text("userhash", self.userhash.clone()) // 用户哈希
-            .text("short", short) // 专辑短链接
-            .text("title", gallery_name) // 新的专辑标题
-            .text("desc", description) // 新的专辑描述
+            .text("reqtype", "editalbum") 
+            .text("userhash", self.userhash.clone()) 
+            .text("short", short) 
+            .text("title", gallery_name.to_string()) // 转换为 String
+            .text("desc", description.to_string()); // 新的专辑描述
             .text("files", files); // 新的文件列表
 
         // 发起请求编辑专辑
