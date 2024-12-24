@@ -203,7 +203,7 @@ impl EhClient {
             let resp = send!(self.0.get(next_page_url))?;
             let html = Html::parse_document(&resp.text().await?);
             // 每一页的 URL
-            pages.extend(html.select_attrs("div#gdt a", "href"));
+            pages.extend(html.select_attrs("#gdt a", "href"));
             // 下一页的 URL
             next_page = html.select_attr("table.ptb td:last-child a", "href");
         }
