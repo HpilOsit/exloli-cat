@@ -79,12 +79,14 @@ impl CatboxUploader {
         let files = file_urls.join(" "); // 文件列表以空格分隔
         let album_name = gallery_name.to_string(); 
         let description = description.to_string(); 
+        let file_data: Vec<u8> = files.into_bytes();  // 转换文件列表为字节数据
+
         let form = Form::new()
             .text("reqtype", "createalbum")
             .text("userhash", self.userhash.clone())
             .text("title", album_name)
             .text("desc", description)
-            .part("fileToUpload", Part::bytes(...));
+            .part("fileToUpload", Part::bytes(file_data)); // 使用文件数据作为字节
 
         // 发起请求创建专辑
         let res = self.client.post("https://catbox.moe/user/api.php")
