@@ -273,7 +273,7 @@ impl ExloliUploader {
 
         let catbox_uploader = CatboxUploader::new(&self.config.catbox.userhash);
         // let host = self.config.catbox.host.clone();
-        let client = Client::builder()
+        let _client = Client::builder()
             .timeout(Duration::from_secs(30))
             .connect_timeout(Duration::from_secs(30))
             .build()?;
