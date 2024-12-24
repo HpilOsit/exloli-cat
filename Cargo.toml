@@ -4,10 +4,7 @@ version = "0.4.0"
 edition = "2021"
 
 [dependencies]
-# reqwest 设置为版本 0.12，启用 multipart 和 json 特性
 reqwest = { version = "0.12.5", features = ["cookies", "multipart", "json"] }
-
-# 其他依赖项
 anyhow = "1.0.86"
 tokio = { version = "1.39.2", features = ["time", "rt-multi-thread", "macros"] }
 tokio-util = "0.7.7"
@@ -25,15 +22,15 @@ telegraph-rs = { version = "0.6.3", default-features = false, features = ["html"
 clap = { version = "4.5.13", features = ["derive"] }
 tracing = "0.1.40"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
-dashmap = "6.0.1"              
-futures = "0.3.30"              
-glob = "0.3.1"                 
+dashmap = "6.0.1"
+futures = "0.3.30"
+glob = "0.3.1"
 image = { version = "0.25.2", default-features = false, features = ["jpeg", "png"] }
-quircs = "0.10.2"              
-rand = "0.8.5"                  
-thiserror = "1.0.63" 
-unicode-width = "0.1.13" 
-indexmap = { version = "2.3.0", features = ["serde"] } 
+quircs = "0.10.2"
+rand = "0.8.5"
+thiserror = "1.0.63"
+unicode-width = "0.1.13"
+indexmap = { version = "2.3.0", features = ["serde"] }
 
 [profile.dev.package.sqlx-macros]
 opt-level = 3
