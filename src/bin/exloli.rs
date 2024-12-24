@@ -30,7 +30,7 @@ async fn main() -> Result<()> {
         .parse_mode(ParseMode::Html)
         .cache_me();
     let uploader =
-        ExloliUploader::new(config.clone(), ehentai.clone(), bot.clone(), trans.clone()).await?;
+        ExloliUploader::new(config.clone(), ehentai.clone(), bot.clone(), trans.clone(), userhash.clone()).await?;
 
     let t1 = {
         let uploader = uploader.clone();
