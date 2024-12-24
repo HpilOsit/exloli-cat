@@ -77,13 +77,14 @@ impl CatboxUploader {
     pub async fn create_album(&self, gallery_name: &str, description: &str, file_urls: Vec<String>) -> Result<String> {
         // 组织要上传到专辑的文件列表，最多 500 个文件
         let files = file_urls.join(" "); // 文件列表以空格分隔
-
+        let album_name = gallery_name.to_string(); 
+        let description = description.to_string(); 
         let form = Form::new()
-            .text("reqtype", "createalbum") // 请求类型：创建专辑
-            .text("userhash", self.userhash.clone()) // 用户哈希
-            .text("title", gallery_name) // 专辑标题，使用画廊的名称
-            .text("desc", description) // 专辑描述，使用 `config.toml` 中的 `author_name`
-            .text("files", files); // 上传的图片文件列表
+            .text("reqtype", "createalbum")
+            .text("userhash", self.userhash.clone())
+            .text("title", album_name)
+            .text("desc", description)
+            .part("fileToUpload", Part::bytes(...));
 
         // 发起请求创建专辑
         let res = self.client.post("https://catbox.moe/user/api.php")
