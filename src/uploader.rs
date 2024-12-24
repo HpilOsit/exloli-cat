@@ -273,7 +273,7 @@ impl ExloliUploader {
 
         let concurrent = self.config.threads_num;
         let (tx, mut rx) = tokio::sync::mpsc::channel(concurrent * 2);
-        let  = self.ehentai.clone();
+        let client = self.ehentai.clone();
 
         let getter = tokio::spawn(
             async move {
