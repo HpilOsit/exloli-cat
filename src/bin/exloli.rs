@@ -23,6 +23,7 @@ async fn main() -> Result<()> {
         .try_init()
         .unwrap();
 
+    // 初始化需要的客户端
     let trans = EhTagTransDB::new(&config.exhentai.trans_file);
     let ehentai = EhClient::new(&config.exhentai.cookie).await?;
     let bot = Bot::new(&config.telegram.token)
@@ -30,22 +31,26 @@ async fn main() -> Result<()> {
         .parse_mode(ParseMode::Html)
         .cache_me();
 
-    // 这里是需要添加的部分：从配置或环境变量获取 userhash
-    let userhash = config.catbox.userhash.clone(); // 假设 `catbox.userhash` 存在于配置文件中
+    // 获取并传递 userhash 配置
+    let userhash = config.catbox.userhash.clone(); // 从配置文件中获取 userhash
 
-    // 将 userhash 传递给 ExloliUploader::new
+    // 创建 ExloliUploader，并传递 userhash
     let uploader = ExloliUploader::new(config.clone(), ehentai.clone(), bot.clone(), trans.clone(), userhash.clone()).await?;
 
+    // 启动任务
     let t1 = {
         let uploader = uploader.clone();
         tokio::spawn(async move { uploader.start().await })
     };
+
     let t2 = {
         let trans = trans.clone();
         tokio::spawn(async move { start_dispatcher(config, uploader, bot, trans).await })
     };
+
     let t3 = tokio::spawn(async move { trans.start().await });
 
+    // 等待所有异步任务
     tokio::try_join!(t1, t2, t3)?;
 
     Ok(())
