@@ -29,8 +29,12 @@ async fn main() -> Result<()> {
         .throttle(Default::default())
         .parse_mode(ParseMode::Html)
         .cache_me();
-    let uploader =
-        ExloliUploader::new(config.clone(), ehentai.clone(), bot.clone(), trans.clone(), userhash.clone()).await?;
+
+    // 这里是需要添加的部分：从配置或环境变量获取 userhash
+    let userhash = config.catbox.userhash.clone(); // 假设 `catbox.userhash` 存在于配置文件中
+
+    // 将 userhash 传递给 ExloliUploader::new
+    let uploader = ExloliUploader::new(config.clone(), ehentai.clone(), bot.clone(), trans.clone(), userhash.clone()).await?;
 
     let t1 = {
         let uploader = uploader.clone();
