@@ -116,7 +116,7 @@ impl CatboxUploader {
             .text("userhash", self.userhash.clone()) 
             .text("short", short) 
             .text("title", gallery_name.to_string()) // 转换为 String
-            .text("desc", description.to_string()); // 新的专辑描述
+            .text("desc", description.to_string()) // 新的专辑描述
             .text("files", files); // 新的文件列表
 
         // 发起请求编辑专辑
