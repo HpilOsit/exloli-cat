@@ -40,15 +40,14 @@ impl ExloliUploader {
         ehentai: EhClient,
         bot: Bot,
         trans: EhTagTransDB,
-        userhash: String,
-        catbox_userhash: String, 
+        userhash: String, 
     ) -> Result<Self> {
         let telegraph = Telegraph::new(&config.telegraph.author_name)
             .author_url(&config.telegraph.author_url)
             .access_token(&config.telegraph.access_token)
             .create()
             .await?;
-            let catbox_uploader = CatboxUploader::new(&catbox_userhash);
+            let catbox_uploader = CatboxUploader::new(&userhash);
         Ok(Self { ehentai, config, telegraph, bot, trans, catbox_uploader })
     }
 }
