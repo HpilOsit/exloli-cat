@@ -31,6 +31,7 @@ pub struct ExloliUploader {
     bot: Bot,
     config: Config,
     trans: EhTagTransDB,
+    catbox_uploader: CatboxUploader,
 }
 
 impl ExloliUploader {
@@ -39,6 +40,7 @@ impl ExloliUploader {
         ehentai: EhClient,
         bot: Bot,
         trans: EhTagTransDB,
+        userhash: String,
     ) -> Result<Self> {
         let telegraph = Telegraph::new(&config.telegraph.author_name)
             .author_url(&config.telegraph.author_url)
@@ -92,7 +94,7 @@ impl ExloliUploader {
 
         for page in &gallery.pages {
             let image_url = self.ehentai.get_image_url(page).await?; // 获取每个图片的 URL
-            let uploaded_url = self.catbox_uploader.upload_file(&image_url).await?; // 上传图片
+            let uploaded_url = self.catbox_uploader.upload_file(&image_url.1).await?; // 上传图片
             uploaded_urls.push(uploaded_url); // 保存上传后的 URL
         }
 
