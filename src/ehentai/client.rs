@@ -164,7 +164,7 @@ impl EhClient {
             let html = Html::parse_document(&resp.text().await?);
 
             // 英文标题、日文标题、父画廊
-            let title = html.select_text("h1#gn").expect("xpath fail: h1#gn");
+            let title = html.select_text("h1#gj").expect("Xpath fail: h1#gj");
             let title_jp = html.select_text("h1#gj");
             let parent = html.select_attr("td.gdt2 a", "href").and_then(|s| s.parse().ok());
 
