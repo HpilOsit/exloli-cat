@@ -12,6 +12,8 @@ use teloxide::types::MessageId;
 use teloxide::utils::html::{code_inline, link};
 use tokio::task::JoinHandle;
 use tokio::time;
+use tokio::sync::Mutex;
+use std::sync::Arc;
 use tracing::{debug, error, info, Instrument};
 
 use crate::bot::Bot;
@@ -59,15 +61,24 @@ impl ExloliUploader {
         gallery: &EhGallery,
         file_urls: Vec<String>, // 文件 URLs
     ) -> Result<String> {
-        // 使用 gallery 名称和 config.toml 中的 author_name 创建专辑
         let album_name = &gallery.title_jp(); // 使用画廊的标题作为专辑名称
         let description = &self.config.telegraph.author_name; // 使用 config.toml 中的 author_name 作为描述
 
-        // 创建专辑并上传图片到专辑
-        let album_short_url = self.catbox_uploader.create_album(album_name, description, file_urls).await?;
+        // 将图片分成若干批次
+        let chunk_size = 35;
+        let file_chunks = file_urls.chunks(chunk_size);
 
-        // 如果创建专辑成功，返回专辑短链接
-        Ok(album_short_url)
+        let mut all_files = Vec::new();
+
+        // 分批上传文件
+        for chunk in file_chunks {
+            let file_urls_batch = chunk.to_vec();
+            let album_url = self.catbox_uploader.create_album(album_name, description, file_urls_batch).await?;
+            all_files.push(album_url);
+        }
+
+        // 返回所有生成的专辑链接
+        Ok(all_files.join("\\n"))
     }
 
     // 更新专辑，将新的图片上传并同步更新专辑
@@ -80,13 +91,20 @@ impl ExloliUploader {
         let album_name = &gallery.title_jp(); // 使用画廊的标题作为专辑名称
         let description = &self.config.telegraph.author_name; // 使用 config.toml 中的 author_name 作为描述
 
-        // 编辑专辑，更新专辑的标题、描述和文件
-        self.catbox_uploader.edit_album(short, album_name, description, new_file_urls).await?;
+        // 将图片分成若干批次
+        let chunk_size = 35;
+        let file_chunks = new_file_urls.chunks(chunk_size);
+
+        // 分批更新专辑中的文件
+        for chunk in file_chunks {
+            let new_file_urls_batch = chunk.to_vec();
+            self.catbox_uploader.edit_album(short, album_name, description, new_file_urls_batch).await?;
+        }
 
         Ok(())
     }
 
-    // 上传画廊图片到 Catbox，并返回图片 URLs
+
     async fn upload_gallery_images(
         &self,
         gallery: &EhGallery,
@@ -94,9 +112,9 @@ impl ExloliUploader {
         let mut uploaded_urls = Vec::new();
 
         for page in &gallery.pages {
-            let image_url = self.ehentai.get_image_url(page).await?; // 获取每个图片的 URL
-            let uploaded_url = self.catbox_uploader.upload_file(&image_url.1).await?; // 上传图片
-            uploaded_urls.push(uploaded_url); // 保存上传后的 URL
+            let image_url = self.ehentai.get_image_url(page).await?; 
+            let uploaded_url = self.catbox_uploader.upload_file(&image_url.1).await?; 
+            uploaded_urls.push(uploaded_url); 
         }
 
         Ok(uploaded_urls)
@@ -107,10 +125,9 @@ impl ExloliUploader {
         &self,
         gallery: &EhGallery,
     ) -> Result<String> {
-        // 上传所有图片
+
         let uploaded_urls = self.upload_gallery_images(gallery).await?;
 
-        // 创建专辑并上传图片
         let album_short_url = self.create_album_and_upload_images(gallery, uploaded_urls).await?;
 
         Ok(album_short_url)
@@ -256,7 +273,7 @@ impl ExloliUploader {
 
         let concurrent = self.config.threads_num;
         let (tx, mut rx) = tokio::sync::mpsc::channel(concurrent * 2);
-        let client = self.ehentai.clone();
+        let  = self.ehentai.clone();
 
         let getter = tokio::spawn(
             async move {
@@ -271,20 +288,19 @@ impl ExloliUploader {
         );
 
         let catbox_uploader = CatboxUploader::new(&self.config.catbox.userhash);
-        // let host = self.config.catbox.host.clone();
-        let _client = Client::builder()
+        let client = Arc::new(Mutex::new(Client::builder()
             .timeout(Duration::from_secs(30))
             .connect_timeout(Duration::from_secs(30))
-            .build()?;
+            .build()?));
         let uploader = tokio::spawn(
             async move {
                 while let Some((page, (fileindex, url))) = rx.recv().await {
                     let filename = format!("{}.{}", page.hash(), url.split('.').last().unwrap_or("jpg"));
-                    //let bytes = client.get(url).send().await?.bytes().await?;
+                    let client = client.clone();  
+                    let bytes = client.lock().await.get(url).send().await?.bytes().await?;
                     debug!("已下载: {}", page.page());
                     let uploaded_url = catbox_uploader.upload_file(&filename).await?;
                     debug!("已上传: {}", page.page());
-                    //let final_url = format!("https://{}/{}", uploaded_url);
                     ImageEntity::create(fileindex, page.hash(), &uploaded_url).await?;
                     PageEntity::create(page.gallery_id(), page.page(), fileindex).await?;
                 }
