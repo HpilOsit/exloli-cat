@@ -31,6 +31,7 @@ pub struct ExloliUploader {
     bot: Bot,
     config: Config,
     trans: EhTagTransDB,
+    catbox_uploader: CatboxUploader, // Ensure the CatboxUploader is included
 }
 
 impl ExloliUploader {
@@ -39,13 +40,87 @@ impl ExloliUploader {
         ehentai: EhClient,
         bot: Bot,
         trans: EhTagTransDB,
+        userhash: &str, // Adding userhash for the CatboxUploader
     ) -> Result<Self> {
         let telegraph = Telegraph::new(&config.telegraph.author_name)
             .author_url(&config.telegraph.author_url)
             .access_token(&config.telegraph.access_token)
             .create()
             .await?;
-        Ok(Self { ehentai, config, telegraph, bot, trans })
+        
+        let catbox_uploader = CatboxUploader::new(userhash); // Initialize CatboxUploader
+
+        Ok(Self {
+            ehentai,
+            config,
+            telegraph,
+            bot,
+            trans,
+            catbox_uploader, // Include the CatboxUploader in the struct
+        })
+    }
+
+    // 负责上传图片到 Catbox，并同时创建专辑
+    pub async fn create_album_and_upload_images(
+        &self,
+        gallery: &EhGallery,
+        file_urls: Vec<String>, // 文件 URLs
+    ) -> Result<String> {
+        // 使用 gallery 名称和 config.toml 中的 author_name 创建专辑
+        let album_name = &gallery.title_jp(); // 使用画廊的标题作为专辑名称
+        let description = &self.config.telegraph.author_name; // 使用 config.toml 中的 author_name 作为描述
+
+        // 创建专辑并上传图片到专辑
+        let album_short_url = self.catbox_uploader.create_album(album_name, description, file_urls).await?;
+
+        // 如果创建专辑成功，返回专辑短链接
+        Ok(album_short_url)
+    }
+
+    // 更新专辑，将新的图片上传并同步更新专辑
+    pub async fn update_album_with_new_images(
+        &self,
+        short: &str,  // 专辑的短链接
+        gallery: &EhGallery,
+        new_file_urls: Vec<String>, // 新的文件 URLs
+    ) -> Result<()> {
+        let album_name = &gallery.title_jp(); // 使用画廊的标题作为专辑名称
+        let description = &self.config.telegraph.author_name; // 使用 config.toml 中的 author_name 作为描述
+
+        // 编辑专辑，更新专辑的标题、描述和文件
+        self.catbox_uploader.edit_album(short, album_name, description, new_file_urls).await?;
+
+        Ok(())
+    }
+
+    // 上传画廊图片到 Catbox，并返回图片 URLs
+    async fn upload_gallery_images(
+        &self,
+        gallery: &EhGallery,
+    ) -> Result<Vec<String>> {
+        let mut uploaded_urls = Vec::new();
+
+        for page in &gallery.pages {
+            let image_url = self.ehentai.get_image_url(page).await?; // 获取每个图片的 URL
+            let uploaded_url = self.catbox_uploader.upload_file(&image_url).await?; // 上传图片
+            uploaded_urls.push(uploaded_url); // 保存上传后的 URL
+        }
+
+        Ok(uploaded_urls)
+    }
+
+    // 上传画廊并创建/更新专辑
+    pub async fn upload_gallery_and_create_album(
+        &self,
+        gallery: &EhGallery,
+    ) -> Result<String> {
+        // 上传所有图片
+        let uploaded_urls = self.upload_gallery_images(gallery).await?;
+
+        // 创建专辑并上传图片
+        let album_short_url = self.create_album_and_upload_images(gallery, uploaded_urls).await?;
+
+        Ok(album_short_url)
     }
 
     /// 每隔 interval 分钟检查一次
@@ -203,7 +278,6 @@ impl ExloliUploader {
         );
 
         let catbox_uploader = CatboxUploader::new(&self.config.catbox.userhash);
-        // let host = self.config.catbox.host.clone();
         let client = Client::builder()
             .timeout(Duration::from_secs(30))
             .connect_timeout(Duration::from_secs(30))
@@ -212,11 +286,9 @@ impl ExloliUploader {
             async move {
                 while let Some((page, (fileindex, url))) = rx.recv().await {
                     let filename = format!("{}.{}", page.hash(), url.split('.').last().unwrap_or("jpg"));
-                    //let bytes = client.get(url).send().await?.bytes().await?;
                     debug!("已下载: {}", page.page());
                     let uploaded_url = catbox_uploader.upload_file(&filename).await?;
                     debug!("已上传: {}", page.page());
-                    //let final_url = format!("https://{}/{}", uploaded_url);
                     ImageEntity::create(fileindex, page.hash(), &uploaded_url).await?;
                     PageEntity::create(page.gallery_id(), page.page(), fileindex).await?;
                 }
@@ -227,103 +299,6 @@ impl ExloliUploader {
 
         tokio::try_join!(flatten(getter), flatten(uploader))?;
 
-        Ok(())
-    }
-
-    /// 从数据库中读取某个画廊的所有图片，生成一篇 telegraph 文章
-    async fn publish_telegraph_article<T: GalleryInfo>(
-        &self,
-        gallery: &T,
-    ) -> Result<telegraph_rs::Page> {
-        let images = ImageEntity::get_by_gallery_id(gallery.url().id()).await?;
-
-        let mut html = String::new();
-        if gallery.cover() != 0 && gallery.cover() < images.len() {
-            html.push_str(&format!(r#"<img src="{}">"#, images[gallery.cover()].url()))
-        }
-        for img in images {
-            html.push_str(&format!(r#"<img src="{}">"#, img.url()));
-        }
-        html.push_str(&format!("<p>图片总数：{}</p>", gallery.pages()));
-
-        let node = html_to_node(&html);
-        let title = gallery.title_jp();
-        Ok(self.telegraph.create_page(&title, &node, false).await?)
-    }
-
-    /// 为画廊生成一条可供发送的 telegram 消息正文
-    async fn create_message_text<T: GalleryInfo>(
-        &self,
-        gallery: &T,
-        article: &str,
-    ) -> Result<String> {
-        let re = Regex::new("[-/· ]").unwrap();
-        let tags = self.trans.trans_tags(gallery.tags());
-        let mut text = String::new();
-        for (ns, tag) in tags {
-            let tag = tag
-                .iter()
-                .map(|s| format!("#{}", re.replace_all(s, "_")))
-                .collect::<Vec<_>>()
-                .join(" ");
-            text.push_str(&format!("{}: {}\n", code_inline(&pad_left(&ns, 6)), tag))
-        }
-
-        text.push_str(
-            &format!("{}: {}\n", code_inline("  预览"), link(article, &gallery.title()),),
-        );
-        text.push_str(&format!("{}: {}", code_inline("原始地址"), gallery.url().url()));
-
-        Ok(text)
-    }
-}
-
-async fn flatten<T>(handle: JoinHandle<Result<T>>) -> Result<T> {
-    match handle.await {
-        Ok(Ok(result)) => Ok(result),
-        Ok(Err(err)) => Err(err),
-        Err(err) => bail!(err),
-    }
-}
-
-impl ExloliUploader {
-    pub async fn reupload(&self, mut galleries: Vec<GalleryEntity>) -> Result<()> {
-        if galleries.is_empty() {
-            galleries = GalleryEntity::list_scans().await?;
-        }
-        for gallery in galleries.iter().rev() {
-            if let Some(score) = PollEntity::get_by_gallery(gallery.id).await? {
-                if score.score > 0.8 {
-                    info!("尝试上传画廊：{}", gallery.url());
-                    if let Err(err) = self.try_upload(&gallery.url(), true).await {
-                        error!("上传失败：{}", err);
-                    }
-                    time::sleep(Duration::from_secs(60)).await;
-                }
-            }
-        }
-        Ok(())
-    }
-
-    pub async fn recheck(&self, mut galleries: Vec<GalleryEntity>) -> Result<()> {
-        if galleries.is_empty() {
-            galleries = GalleryEntity::list_scans().await?;
-        }
-        for gallery in galleries.iter().rev() {
-            let telegraph =
-                TelegraphEntity::get(gallery.id).await?.ok_or(anyhow!("找不到 telegraph"))?;
-            if let Some(msg) = MessageEntity::get_by_gallery(gallery.id).await? {
-                info!("检测画廊：{}", gallery.url());
-                if !self.check_telegraph(&telegraph.url).await? {
-                    info!("重新上传预览：{}", gallery.url());
-                    if let Err(err) = self.republish(gallery, &msg).await {
-                        error!("上传失败：{}", err);
-                    }
-                    time::sleep(Duration::from_secs(60)).await;
-                }
-            }
-            time::sleep(Duration::from_secs(1)).await;
-        }
         Ok(())
     }
 }
