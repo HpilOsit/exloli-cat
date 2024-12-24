@@ -9,67 +9,122 @@ pub struct CatboxUploader {
 }
 
 impl CatboxUploader {
+    // 构造方法
     pub fn new(userhash: &str) -> Self {
-        let client = Client::new();
+        let client = Client::new(); // 初始化 HTTP 客户端
         Self {
-            userhash: userhash.to_string(),
+            userhash: userhash.to_string(), // 用户哈希赋值
             client,
         }
     }
 
     // 上传文件到 Catbox
     pub async fn upload_file(&self, file_path: &str) -> Result<String> {
-        // 读取文件内容
-        let mut file = tokio::fs::File::open(file_path).await?;
-        let mut buffer = Vec::new();
-        file.read_to_end(&mut buffer).await?;
+        let mut file = tokio::fs::File::open(file_path).await?; // 异步打开文件
+        let mut buffer = Vec::new(); // 用于存储文件内容
+        file.read_to_end(&mut buffer).await?; // 读取文件内容到缓冲区
 
-        let file_part = Part::stream(buffer);
+        let file_part = Part::stream(buffer); // 创建一个 multipart 部分，包含文件内容
         let form = Form::new()
-            .text("reqtype", "fileupload")
-            .text("userhash", self.userhash.clone())
-            .part("fileToUpload", file_part);
+            .text("reqtype", "fileupload") // 表单参数：请求类型为文件上传
+            .text("userhash", self.userhash.clone()) // 表单参数：用户哈希
+            .part("fileToUpload", file_part); // 附加文件部分
 
         // 发起上传请求
         let res = self.client.post("https://catbox.moe/user/api.php")
-            .multipart(form)
+            .multipart(form) // 使用 multipart 表单
             .send()
-            .await?;
+            .await?; // 异步发送请求
 
-        if res.status().is_success() {
-            let json: serde_json::Value = res.json().await?;
-            if let Some(url) = json["fileURL"].as_str() {
-                Ok(url.to_string())
+        if res.status().is_success() { // 如果响应成功
+            let json: serde_json::Value = res.json().await?; // 解析 JSON 响应
+            if let Some(url) = json["fileURL"].as_str() { // 从 JSON 中提取文件 URL
+                Ok(url.to_string()) // 返回文件 URL
             } else {
-                Err(anyhow!("Failed to get file URL from response"))
+                Err(anyhow!("Failed to get file URL from response")) // 如果没有找到 URL，则返回错误
             }
         } else {
-            Err(anyhow!("Failed to upload file"))
+            Err(anyhow!("Failed to upload file")) // 上传失败时返回错误
         }
     }
 
     // 上传 URL 到 Catbox
     pub async fn upload_url(&self, image_url: &str) -> Result<String> {
         let form = Form::new()
-            .text("reqtype", "urlupload")
-            .text("userhash", self.userhash.clone())
-            .text("url", image_url.to_string());
+            .text("reqtype", "urlupload") // 请求类型：URL 上传
+            .text("userhash", self.userhash.clone()) // 用户哈希
+            .text("url", image_url.to_string()); // 上传的 URL
 
-        // 发起上传请求
+        // 发起请求
+        let res = self.client.post("https://catbox.moe/user/api.php")
+            .multipart(form)
+            .send()
+            .await?; // 异步发送请求
+
+        if res.status().is_success() { // 如果请求成功
+            let json: serde_json::Value = res.json().await?; // 解析 JSON 响应
+            if let Some(url) = json["fileURL"].as_str() { // 获取文件 URL
+                Ok(url.to_string()) // 返回 URL
+            } else {
+                Err(anyhow!("Failed to get file URL from response")) // 没有 URL，则返回错误
+            }
+        } else {
+            Err(anyhow!("Failed to upload URL")) // 上传失败时返回错误
+        }
+    }
+
+    // 创建专辑并上传图片
+    pub async fn create_album(&self, gallery_name: &str, description: &str, file_urls: Vec<String>) -> Result<String> {
+        // 组织要上传到专辑的文件列表，最多 500 个文件
+        let files = file_urls.join(" "); // 文件列表以空格分隔
+
+        let form = Form::new()
+            .text("reqtype", "createalbum") // 请求类型：创建专辑
+            .text("userhash", self.userhash.clone()) // 用户哈希
+            .text("title", gallery_name) // 专辑标题，使用画廊的名称
+            .text("desc", description) // 专辑描述，使用 `config.toml` 中的 `author_name`
+            .text("files", files); // 上传的图片文件列表
+
+        // 发起请求创建专辑
+        let res = self.client.post("https://catbox.moe/user/api.php")
+            .multipart(form)
+            .send()
+            .await?; // 异步发送请求
+
+        if res.status().is_success() { // 如果响应成功
+            let json: serde_json::Value = res.json().await?; // 解析 JSON 响应
+            if let Some(short) = json["short"].as_str() { // 获取专辑短链接
+                Ok(short.to_string()) // 返回专辑短链接
+            } else {
+                Err(anyhow!("Failed to create album")) // 创建专辑失败
+            }
+        } else {
+            Err(anyhow!("Failed to create album")) // 创建专辑失败
+        }
+    }
+
+    // 编辑专辑，添加新的图片
+    pub async fn edit_album(&self, short: &str, gallery_name: &str, description: &str, file_urls: Vec<String>) -> Result<()> {
+        let files = file_urls.join(" "); // 文件列表
+
+        let form = Form::new()
+            .text("reqtype", "editalbum") // 请求类型：编辑专辑
+            .text("userhash", self.userhash.clone()) // 用户哈希
+            .text("short", short) // 专辑短链接
+            .text("title", gallery_name) // 新的专辑标题
+            .text("desc", description) // 新的专辑描述
+            .text("files", files); // 新的文件列表
+
+        // 发起请求编辑专辑
         let res = self.client.post("https://catbox.moe/user/api.php")
             .multipart(form)
             .send()
             .await?;
 
-        if res.status().is_success() {
-            let json: serde_json::Value = res.json().await?;
-            if let Some(url) = json["fileURL"].as_str() {
-                Ok(url.to_string())
-            } else {
-                Err(anyhow!("Failed to get file URL from response"))
-            }
+        if !res.status().is_success() {
+            Err(anyhow!("Failed to edit album")) // 编辑专辑失败
         } else {
-            Err(anyhow!("Failed to upload URL"))
+            Ok(())
         }
     }
 }
